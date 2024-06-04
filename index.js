@@ -1,52 +1,59 @@
 const express = require('express');
+const bodyParser = require('body-parser');
 const puppeteer = require('puppeteer');
 
 const app = express();
-app.use(express.json());
+const port = process.env.PORT || 3000;
 
-app.get('/', (req, res) => {
-  res.send('Welcome to the PDF Extraction Service!');
-});
+app.use(bodyParser.json());
 
-app.post('/extractPdfLink', async (req, res) => {
+app.post('/', async (req, res) => {
+  console.log('Received request:', req.body); // Log the request body
+
   const { url } = req.body;
-
   if (!url) {
+    console.log('No URL provided');
     return res.status(400).send({ error: 'URL is required' });
   }
 
-  let browser;
   try {
-    browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
-    const page = await browser.newPage();
-    await page.goto(url);
-
-    await page.waitForSelector('#downloadPdf button');
-    await page.click('#downloadPdf button');
-
-    await page.waitForTimeout(3000);
-
-    const pdfLink = await page.evaluate(() => {
-      const anchor = document.querySelector('a[href$=".pdf"]');
-      return anchor ? anchor.href : null;
+    const browser = await puppeteer.launch({
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      headless: true,
     });
+    const page = await browser.newPage();
+    await page.goto(url, { waitUntil: 'networkidle0' });
+
+    // Wait for the phrase "amount due" to be visible on the page
+    try {
+      await page.waitForFunction(
+        () => document.body.innerText.includes('Amount due'),
+        { timeout: 30000 } // Increase the timeout to 30 seconds
+      );
+    } catch (error) {
+      const content = await page.content();
+      console.log('Full page content:', content);
+      throw error;
+    }
+
+    // Extract the full page content
+    const content = await page.content();
 
     await browser.close();
 
-    if (pdfLink) {
-      res.status(200).send({ pdfLink });
+    if (content) {
+      console.log('Page content extracted successfully');
+      res.status(200).send({ content });
     } else {
-      res.status(404).send({ error: 'PDF link not found' });
+      console.log('Failed to extract page content');
+      res.status(404).send({ error: 'Failed to extract page content' });
     }
   } catch (error) {
-    if (browser) {
-      await browser.close();
-    }
+    console.error('Error:', error);
     res.status(500).send({ error: error.message });
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+app.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
 });
