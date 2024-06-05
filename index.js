@@ -7,6 +7,11 @@ const port = process.env.PORT || 3000;
 
 app.use(bodyParser.json());
 
+// Add a simple GET route for the root URL
+app.get('/', (req, res) => {
+  res.send('Welcome to the JSON from Invoices API');
+});
+
 app.post('/', async (req, res) => {
   console.log('Received request:', req.body); // Log the request body
 
